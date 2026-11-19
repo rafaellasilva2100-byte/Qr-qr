@@ -1,0 +1,1524 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Configurador de QR Code Dinâmico</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Fonte Inter -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <!-- Biblioteca QRCode.js -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+    <!-- Ícones Lucide -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f8fafc;
+            color: #0f172a;
+        }
+        /* Estilo customizado para o container do QR Code */
+        #qrcode-container img, #qrcode-container canvas,
+        #admin-qrcode-container img, #admin-qrcode-container canvas {
+            margin: 0 auto;
+            border-radius: 12px;
+        }
+        /* Scrollbar sutil para a tabela estilo planilha */
+        .sheet-scroll::-webkit-scrollbar {
+            height: 8px;
+            width: 8px;
+        }
+        .sheet-scroll::-webkit-scrollbar-track {
+            background: #f1f5f9;
+            border-radius: 4px;
+        }
+        .sheet-scroll::-webkit-scrollbar-thumb {
+            background: #cbd5e1;
+            border-radius: 4px;
+        }
+        .sheet-scroll::-webkit-scrollbar-thumb:hover {
+            background: #94a3b8;
+        }
+    </style>
+</head>
+<body class="min-h-screen flex flex-col antialiased selection:bg-indigo-100 selection:text-indigo-900">
+
+    <!-- ===================================================================== -->
+    <!-- TELA DE REDIRECIONAMENTO DINÂMICO (?go=ID)                            -->
+    <!-- ===================================================================== -->
+    <div id="redirect-screen" class="hidden fixed inset-0 z-50 bg-slate-950 text-white flex flex-col items-center justify-center p-6">
+        <div class="max-w-md w-full bg-slate-900 border border-slate-800 rounded-3xl p-8 text-center shadow-2xl">
+            <div id="redirect-spinner" class="w-16 h-16 mx-auto mb-6 rounded-2xl bg-indigo-500/20 border border-indigo-500/30 flex items-center justify-center text-indigo-400">
+                <i data-lucide="qr-code" class="w-8 h-8 animate-pulse"></i>
+            </div>
+            <span class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-indigo-500/10 text-indigo-300 border border-indigo-500/20 mb-3">
+                <span class="w-2 h-2 rounded-full bg-emerald-400 animate-ping"></span>
+                QR Code Dinâmico Ativo
+            </span>
+            <h1 id="redirect-title" class="text-2xl font-bold tracking-tight mb-2">Redirecionando...</h1>
+            <p id="redirect-subtitle" class="text-slate-400 text-sm mb-6">Buscando o destino mais recente configurado na nuvem.</p>
+
+            <div id="redirect-target-box" class="hidden bg-slate-950/80 border border-slate-800 rounded-2xl p-4 mb-6 text-left">
+                <p class="text-[11px] uppercase tracking-wider font-semibold text-slate-500 mb-1">Destino Configurado</p>
+                <p id="redirect-url-display" class="text-sm font-medium text-indigo-300 break-all"></p>
+            </div>
+
+            <div id="redirect-actions" class="hidden flex flex-col gap-3">
+                <a id="redirect-now-btn" href="#" rel="noopener noreferrer" class="w-full py-3.5 px-5 bg-indigo-600 hover:bg-indigo-500 text-white font-semibold rounded-xl shadow-lg shadow-indigo-600/30 transition flex items-center justify-center gap-2">
+                    <span>Abrir Destino Agora</span>
+                    <i data-lucide="external-link" class="w-4 h-4"></i>
+                </a>
+                <button id="redirect-edit-btn" type="button" class="w-full py-2.5 px-4 bg-slate-800 hover:bg-slate-700 text-slate-300 text-sm font-medium rounded-xl transition">
+                    Configurar este QR Code
+                </button>
+            </div>
+
+            <div id="redirect-error-box" class="hidden mt-4">
+                <button id="redirect-back-home" type="button" class="w-full py-3 px-4 bg-indigo-600 hover:bg-indigo-500 text-white font-semibold rounded-xl transition">
+                    Ir para o Configurador
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ===================================================================== -->
+    <!-- BARRA DE NOTIFICAÇÃO / TOAST CUSTOMIZADO                              -->
+    <!-- ===================================================================== -->
+    <div id="toast-container" class="fixed bottom-4 right-4 left-4 sm:left-auto sm:w-96 z-50 flex flex-col gap-2 pointer-events-none"></div>
+
+    <!-- ===================================================================== -->
+    <!-- MODAL DE ACESSO / TROCA DE CÓDIGO OU VERIFICAÇÃO DE PIN               -->
+    <!-- ===================================================================== -->
+    <div id="room-modal" class="hidden fixed inset-0 z-40 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
+        <div class="bg-white rounded-3xl max-w-md w-full p-6 sm:p-7 shadow-2xl border border-slate-200 animate-fade-in">
+            <div class="flex items-center justify-between mb-4">
+                <div class="flex items-center gap-2.5">
+                    <div class="w-10 h-10 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center">
+                        <i data-lucide="smartphone" class="w-5 h-5"></i>
+                    </div>
+                    <div>
+                        <h3 class="font-bold text-slate-900 text-lg">Conectar Outro Celular</h3>
+                        <p class="text-xs text-slate-500">Sincronize ou abra um QR Code existente</p>
+                    </div>
+                </div>
+                <button id="close-room-modal" type="button" class="p-2 rounded-xl text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition">
+                    <i data-lucide="x" class="w-5 h-5"></i>
+                </button>
+            </div>
+
+            <div class="space-y-4">
+                <div>
+                    <label for="switch-room-input" class="block text-xs font-semibold uppercase tracking-wider text-slate-600 mb-1.5">
+                        Código do QR Code (ID da Sala)
+                    </label>
+                    <div class="flex gap-2">
+                        <input id="switch-room-input" type="text" placeholder="Ex: QR-8492" class="flex-1 px-4 py-3 rounded-xl border border-slate-300 text-sm font-mono uppercase focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500">
+                        <button id="confirm-switch-room" type="button" class="px-5 py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold text-sm rounded-xl transition shadow-sm">
+                            Abrir
+                        </button>
+                    </div>
+                </div>
+
+                <div class="relative flex py-1 items-center">
+                    <div class="flex-grow border-t border-slate-200"></div>
+                    <span class="flex-shrink mx-3 text-xs text-slate-400 font-medium">ou</span>
+                    <div class="flex-grow border-t border-slate-200"></div>
+                </div>
+
+                <button id="create-new-room-btn" type="button" class="w-full py-3 px-4 bg-slate-100 hover:bg-slate-200 text-slate-800 font-semibold text-sm rounded-xl transition flex items-center justify-center gap-2">
+                    <i data-lucide="plus-circle" class="w-4 h-4 text-indigo-600"></i>
+                    <span>Criar Novo QR Code Dinâmico</span>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ===================================================================== -->
+    <!-- MODAL DE QR CODE DE ADMINISTRAÇÃO (ABRIR CONFIGURAÇÃO NO CELULAR)     -->
+    <!-- ===================================================================== -->
+    <div id="admin-qr-modal" class="hidden fixed inset-0 z-40 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
+        <div class="bg-white rounded-3xl max-w-sm w-full p-6 text-center shadow-2xl border border-slate-200">
+            <div class="flex items-center justify-between mb-3">
+                <span class="text-xs font-bold uppercase tracking-wider text-indigo-600 bg-indigo-50 px-3 py-1 rounded-full">Acesso Remoto</span>
+                <button id="close-admin-qr-modal" type="button" class="p-2 rounded-xl text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition">
+                    <i data-lucide="x" class="w-5 h-5"></i>
+                </button>
+            </div>
+            <h3 class="text-lg font-bold text-slate-900 mb-1">Editar por Outro Celular</h3>
+            <p class="text-xs text-slate-500 mb-5">Escaneie este QR Code de configuração com outro celular para alterar o link a qualquer momento.</p>
+
+            <div class="bg-slate-50 border border-slate-200 rounded-2xl p-5 mb-5 flex items-center justify-center">
+                <div id="admin-qrcode-container"></div>
+            </div>
+
+            <div class="bg-slate-100 rounded-xl p-2.5 flex items-center justify-between gap-2 mb-4">
+                <span id="admin-url-text" class="text-xs text-slate-600 truncate font-mono"></span>
+                <button id="copy-admin-url-modal" type="button" class="px-3 py-1.5 bg-white hover:bg-slate-50 text-slate-800 text-xs font-semibold rounded-lg border border-slate-200 shadow-sm shrink-0">
+                    Copiar
+                </button>
+            </div>
+
+            <p class="text-[11px] text-slate-400">Código da Configuração: <strong id="modal-room-code" class="text-slate-700 font-mono"></strong></p>
+        </div>
+    </div>
+
+    <!-- ===================================================================== -->
+    <!-- CABEÇALHO PRINCIPAL                                                   -->
+    <!-- ===================================================================== -->
+    <header class="bg-white border-b border-slate-200 sticky top-0 z-30">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between gap-3">
+            <!-- Marca -->
+            <div class="flex items-center gap-3 min-w-0">
+                <div class="w-10 h-10 rounded-xl bg-indigo-600 text-white flex items-center justify-center shadow-md shadow-indigo-600/20 shrink-0">
+                    <i data-lucide="qr-code" class="w-5 h-5"></i>
+                </div>
+                <div class="min-w-0">
+                    <h1 class="text-base sm:text-lg font-extrabold text-slate-900 tracking-tight truncate">
+                        Configurador de QR Code Dinâmico
+                    </h1>
+                    <div class="flex items-center gap-2 text-xs text-slate-500">
+                        <span id="sync-status-dot" class="w-2 h-2 rounded-full bg-amber-400"></span>
+                        <span id="sync-status-text" class="truncate">Conectando à nuvem...</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Controles de Sala / Outro Celular -->
+            <div class="flex items-center gap-2 shrink-0">
+                <div class="hidden md:flex items-center gap-2 bg-slate-100 px-3 py-1.5 rounded-xl border border-slate-200">
+                    <span class="text-xs text-slate-500">Código:</span>
+                    <span id="header-room-id" class="text-xs font-bold font-mono text-indigo-700">---</span>
+                </div>
+                <button id="open-admin-qr-btn" type="button" class="p-2.5 sm:px-3.5 sm:py-2 rounded-xl bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-xs font-semibold transition flex items-center gap-1.5" title="Abrir configuração em outro celular">
+                    <i data-lucide="smartphone" class="w-4 h-4"></i>
+                    <span class="hidden sm:inline">Outro Celular</span>
+                </button>
+                <button id="open-room-modal-btn" type="button" class="p-2.5 sm:px-3.5 sm:py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold transition flex items-center gap-1.5">
+                    <i data-lucide="folder-sync" class="w-4 h-4"></i>
+                    <span class="hidden sm:inline">Trocar / Novo</span>
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <!-- ===================================================================== -->
+    <!-- CONTEÚDO PRINCIPAL                                                    -->
+    <!-- ===================================================================== -->
+    <main class="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8 space-y-6">
+
+        <!-- Banner de Acesso Rápido Mobile (visível em telas menores) -->
+        <div class="md:hidden bg-white border border-slate-200 rounded-2xl p-3.5 flex items-center justify-between shadow-sm">
+            <div class="flex items-center gap-2">
+                <span class="text-xs font-medium text-slate-500">ID Ativo:</span>
+                <span id="mobile-room-id" class="text-xs font-bold font-mono text-indigo-700 bg-indigo-50 px-2.5 py-1 rounded-lg">---</span>
+            </div>
+            <button id="mobile-copy-admin-btn" type="button" class="text-xs font-semibold text-indigo-600 hover:text-indigo-700 flex items-center gap-1">
+                <i data-lucide="share-2" class="w-3.5 h-3.5"></i>
+                <span>Compartilhar Acesso</span>
+            </button>
+        </div>
+
+        <!-- GRID SUPERIOR: CONFIGURADOR (ESQUERDA) + QR CODE DINÂMICO (DIREITA) -->
+        <div class="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+
+            <!-- COLUNA ESQUERDA (7 cols): FORMULÁRIO DE CONFIGURAÇÃO E STATUS -->
+            <div class="lg:col-span-7 space-y-6">
+
+                <!-- Card 1: Configurar Destino do QR Code -->
+                <section class="bg-white rounded-3xl border border-slate-200 p-5 sm:p-7 shadow-sm">
+                    <div class="flex flex-wrap items-center justify-between gap-2 mb-5">
+                        <div>
+                            <h2 class="text-lg sm:text-xl font-bold text-slate-900">Destino do QR Code</h2>
+                            <p class="text-xs sm:text-sm text-slate-500">Atualize o link a qualquer momento sem precisar trocar ou reimprimir o QR Code.</p>
+                        </div>
+                        <span id="pin-badge" class="hidden inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold bg-amber-50 text-amber-700 border border-amber-200">
+                            <i data-lucide="lock" class="w-3.5 h-3.5"></i>
+                            Protegido por PIN
+                        </span>
+                    </div>
+
+                    <!-- Formulário de Atualização -->
+                    <form id="destination-form" class="space-y-4" novalidate>
+                        <div>
+                            <label for="destination-input" class="block text-xs font-semibold uppercase tracking-wider text-slate-600 mb-1.5">
+                                Novo Link de Destino (Obrigatório https:// ou http://)
+                            </label>
+                            <div class="relative">
+                                <div class="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400">
+                                    <i data-lucide="link" class="w-4 h-4"></i>
+                                </div>
+                                <input
+                                    id="destination-input"
+                                    type="url"
+                                    inputmode="url"
+                                    autocomplete="off"
+                                    placeholder="https://exemplo.com.br/sua-pagina"
+                                    class="w-full pl-10 pr-24 py-3.5 rounded-2xl border border-slate-300 text-slate-900 placeholder-slate-400 text-sm sm:text-base focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition"
+                                >
+                                <button
+                                    id="paste-url-btn"
+                                    type="button"
+                                    class="absolute right-2 top-1/2 -translate-y-1/2 px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold transition"
+                                >
+                                    Colar
+                                </button>
+                            </div>
+                            <!-- Mensagem de erro de validação -->
+                            <p id="validation-error" class="hidden mt-2 text-xs font-medium text-rose-600 flex items-center gap-1.5">
+                                <i data-lucide="alert-circle" class="w-4 h-4 shrink-0"></i>
+                                <span id="validation-error-text">O link deve começar com https:// ou http://</span>
+                            </p>
+                        </div>
+
+                        <!-- Rótulo opcional e PIN de Segurança -->
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                            <div>
+                                <label for="label-input" class="block text-xs font-semibold uppercase tracking-wider text-slate-600 mb-1.5">
+                                    Nome / Campanha (Opcional)
+                                </label>
+                                <input
+                                    id="label-input"
+                                    type="text"
+                                    maxlength="60"
+                                    placeholder="Ex: Cardápio Digital, Instagram..."
+                                    class="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-sm text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                                >
+                            </div>
+                            <div>
+                                <label for="pin-input" class="block text-xs font-semibold uppercase tracking-wider text-slate-600 mb-1.5">
+                                    PIN de Edição (Opcional)
+                                </label>
+                                <input
+                                    id="pin-input"
+                                    type="password"
+                                    inputmode="numeric"
+                                    maxlength="8"
+                                    placeholder="Digite um PIN para salvar/proteger"
+                                    class="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-sm text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                                >
+                            </div>
+                        </div>
+
+                        <!-- Botão Salvar e Atualizar -->
+                        <div class="pt-1 flex flex-col sm:flex-row gap-3">
+                            <button
+                                id="save-destination-btn"
+                                type="submit"
+                                class="flex-1 py-3.5 px-6 bg-indigo-600 hover:bg-indigo-700 active:scale-[0.99] text-white font-bold text-sm sm:text-base rounded-2xl shadow-lg shadow-indigo-600/20 transition flex items-center justify-center gap-2"
+                            >
+                                <i data-lucide="save" class="w-4 h-4"></i>
+                                <span>Salvar e Atualizar Destino</span>
+                            </button>
+                        </div>
+                    </form>
+                </section>
+
+                <!-- Card 2: Link Atualmente Configurado -->
+                <section class="bg-white rounded-3xl border border-slate-200 p-5 sm:p-7 shadow-sm">
+                    <div class="flex items-center justify-between gap-2 mb-4">
+                        <div class="flex items-center gap-2">
+                            <span class="w-2.5 h-2.5 rounded-full bg-emerald-500"></span>
+                            <h3 class="text-base font-bold text-slate-900">Link Atualmente Configurado</h3>
+                        </div>
+                        <span id="last-updated-badge" class="text-xs text-slate-500 bg-slate-100 px-3 py-1 rounded-full font-medium">
+                            Aguardando salvamento
+                        </span>
+                    </div>
+
+                    <div class="bg-slate-50 border border-slate-200 rounded-2xl p-4 space-y-3">
+                        <div class="flex items-start justify-between gap-3">
+                            <div class="min-w-0 flex-1">
+                                <p id="current-label-display" class="text-xs font-semibold text-indigo-600 mb-0.5">Destino Principal</p>
+                                <p id="current-url-display" class="text-sm sm:text-base font-semibold text-slate-900 break-all">
+                                    Nenhum link salvo ainda
+                                </p>
+                            </div>
+                        </div>
+
+                        <div class="pt-2 border-t border-slate-200/80 flex flex-wrap items-center gap-2.5">
+                            <a
+                                id="open-current-link-btn"
+                                href="#"
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                class="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs sm:text-sm font-semibold shadow-sm transition pointer-events-none opacity-50"
+                            >
+                                <i data-lucide="external-link" class="w-4 h-4"></i>
+                                <span>Abrir Link Configurado</span>
+                            </a>
+
+                            <button
+                                id="copy-current-link-btn"
+                                type="button"
+                                class="inline-flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl bg-white hover:bg-slate-100 text-slate-700 border border-slate-200 text-xs sm:text-sm font-semibold transition"
+                            >
+                                <i data-lucide="copy" class="w-4 h-4"></i>
+                                <span>Copiar Destino</span>
+                            </button>
+                        </div>
+                    </div>
+                </section>
+            </div>
+
+            <!-- COLUNA DIREITA (5 cols): QR CODE DINÂMICO FIXO -->
+            <div class="lg:col-span-5">
+                <section class="bg-white rounded-3xl border border-slate-200 p-5 sm:p-7 shadow-sm text-center">
+                    <div class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-indigo-50 text-indigo-700 mb-3">
+                        <i data-lucide="sparkles" class="w-3.5 h-3.5"></i>
+                        <span>QR Code Dinâmico Permanente</span>
+                    </div>
+                    <h2 class="text-lg sm:text-xl font-bold text-slate-900 mb-1">Aponte a Câmera do Celular</h2>
+                    <p class="text-xs text-slate-500 mb-5">Este código nunca muda. Ao lê-lo, o celular é levado ao link atual.</p>
+
+                    <!-- Moldura do QR Code -->
+                    <div class="relative mx-auto max-w-[270px] bg-white border-2 border-slate-200 rounded-3xl p-5 shadow-inner mb-5">
+                        <div id="qrcode-container" class="flex items-center justify-center min-h-[210px]"></div>
+                        <div class="mt-3 pt-2.5 border-t border-slate-100 flex items-center justify-between text-[11px] text-slate-400 font-mono">
+                            <span>ID: <strong id="card-room-id" class="text-slate-700">---</strong></span>
+                            <span class="text-emerald-600 font-sans font-semibold flex items-center gap-1">
+                                <span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span> Ativo
+                            </span>
+                        </div>
+                    </div>
+
+                    <!-- Aviso e Configuração de Domínio Público para Outro Celular -->
+                    <div id="public-host-warning" class="hidden bg-amber-50 border border-amber-200 rounded-2xl p-3.5 mb-4 text-left space-y-2">
+                        <div class="flex items-start gap-2">
+                            <i data-lucide="alert-triangle" class="w-4 h-4 text-amber-600 shrink-0 mt-0.5"></i>
+                            <p class="text-xs text-amber-900 leading-relaxed">
+                                <strong>Atenção para leitura em outro celular:</strong> Você está executando em uma prévia privada/local. Para que outro celular abra ao ler o QR Code, informe abaixo o link público onde este arquivo está hospedado (ex: GitHub Pages, Vercel, Netlify):
+                            </p>
+                        </div>
+                        <div class="flex gap-1.5">
+                            <input id="custom-public-base-input" type="url" placeholder="https://seusite.vercel.app/" class="flex-1 px-3 py-1.5 rounded-xl border border-amber-300 bg-white text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-amber-500">
+                            <button id="apply-public-base-btn" type="button" class="px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white text-xs font-semibold rounded-xl transition shrink-0">
+                                Aplicar
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- URL Fixa embutida no QR Code -->
+                    <div class="bg-slate-50 border border-slate-200 rounded-xl p-2.5 mb-5 text-left">
+                        <p class="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-0.5">Link Fixo Embutido no QR Code</p>
+                        <div class="flex items-center justify-between gap-2">
+                            <span id="dynamic-qr-url-text" class="text-xs font-mono text-slate-600 truncate">---</span>
+                            <button id="copy-qr-url-btn" type="button" class="text-xs font-semibold text-indigo-600 hover:text-indigo-800 shrink-0 px-2 py-1 rounded-lg hover:bg-indigo-50 transition">
+                                Copiar
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Botões de Ação do QR Code -->
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                        <button
+                            id="download-qr-btn"
+                            type="button"
+                            class="py-3 px-4 bg-slate-900 hover:bg-slate-800 text-white text-xs sm:text-sm font-semibold rounded-xl transition flex items-center justify-center gap-2 shadow-sm"
+                        >
+                            <i data-lucide="download" class="w-4 h-4"></i>
+                            <span>Baixar PNG</span>
+                        </button>
+
+                        <button
+                            id="simulate-scan-btn"
+                            type="button"
+                            class="py-3 px-4 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-xs sm:text-sm font-semibold rounded-xl transition flex items-center justify-center gap-2"
+                        >
+                            <i data-lucide="scan-line" class="w-4 h-4"></i>
+                            <span>Simular Leitura</span>
+                        </button>
+                    </div>
+                </section>
+            </div>
+        </div>
+
+        <!-- ================================================================= -->
+        <!-- SEÇÃO INFERIOR: PLANILHA VINCULADA EM TEMPO REAL                   -->
+        <!-- ================================================================= -->
+        <section class="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden">
+            <!-- Cabeçalho da Planilha -->
+            <div class="p-5 sm:p-6 border-b border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-slate-50/60">
+                <div class="flex items-start sm:items-center gap-3">
+                    <div class="w-10 h-10 rounded-xl bg-emerald-600 text-white flex items-center justify-center shrink-0 shadow-sm">
+                        <i data-lucide="table" class="w-5 h-5"></i>
+                    </div>
+                    <div>
+                        <div class="flex items-center gap-2">
+                            <h2 class="text-base sm:text-lg font-bold text-slate-900">Planilha Vinculada</h2>
+                            <span class="px-2 py-0.5 rounded-md text-[11px] font-semibold bg-emerald-100 text-emerald-800">Sincronizada</span>
+                        </div>
+                        <p class="text-xs text-slate-500">Registro automático de destino atual e histórico de alterações deste QR Code.</p>
+                    </div>
+                </div>
+
+                <!-- Botões da Planilha -->
+                <div class="flex flex-wrap items-center gap-2">
+                    <button id="export-csv-btn" type="button" class="px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold transition flex items-center gap-1.5 shadow-sm">
+                        <i data-lucide="file-spreadsheet" class="w-4 h-4"></i>
+                        <span>Baixar Planilha (.CSV)</span>
+                    </button>
+                    <button id="toggle-gsheets-guide-btn" type="button" class="px-3.5 py-2 rounded-xl bg-white hover:bg-slate-100 text-slate-700 border border-slate-300 text-xs font-semibold transition flex items-center gap-1.5">
+                        <i data-lucide="code-2" class="w-4 h-4 text-emerald-600"></i>
+                        <span>Vincular Google Sheets</span>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Painel Expansível: Integração com Google Sheets -->
+            <div id="gsheets-guide-panel" class="hidden p-5 sm:p-6 bg-emerald-50/50 border-b border-emerald-200/70 space-y-3">
+                <div class="flex items-center justify-between">
+                    <h3 class="text-sm font-bold text-emerald-950 flex items-center gap-2">
+                        <i data-lucide="sheet" class="w-4 h-4 text-emerald-600"></i>
+                        <span>Sincronizar com Google Planilhas (Apps Script opcional)</span>
+                    </h3>
+                    <button id="copy-apps-script-btn" type="button" class="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold rounded-lg transition">
+                        Copiar Apps Script
+                    </button>
+                </div>
+                <p class="text-xs text-emerald-900 leading-relaxed">
+                    A planilha vinculada abaixo já atualiza em tempo real. Você também pode exportar o arquivo <strong>.CSV</strong> ou colar este <strong>Google Apps Script</strong> em <em>Extensões &gt; Apps Script</em> na sua planilha do Google para receber os dados automaticamente:
+                </p>
+                <pre id="gsheets-script-code" class="bg-slate-900 text-emerald-300 text-xs p-3.5 rounded-xl overflow-x-auto font-mono">function doPost(e) {
+  const sheet = SpreadsheetApp.getActiveSpreadsheet().getActiveSheet();
+  const data = JSON.parse(e.postData.contents);
+  sheet.appendRow([new Date(), data.roomId, data.label, data.targetUrl]);
+  return ContentService.createTextOutput(JSON.stringify({ ok: true }))
+    .setMimeType(ContentService.MimeType.JSON);
+}</pre>
+            </div>
+
+            <!-- Tabela Estilo Planilha -->
+            <div class="overflow-x-auto sheet-scroll">
+                <table class="w-full text-left border-collapse min-w-[680px]">
+                    <thead>
+                        <tr class="bg-slate-100 border-b border-slate-200 text-[11px] font-bold uppercase tracking-wider text-slate-500">
+                            <th class="py-3 px-4 border-r border-slate-200 w-12 text-center">#</th>
+                            <th class="py-3 px-4 border-r border-slate-200 w-28">Status</th>
+                            <th class="py-3 px-4 border-r border-slate-200 w-44">Campanha / Nome</th>
+                            <th class="py-3 px-4 border-r border-slate-200">URL de Destino Salva</th>
+                            <th class="py-3 px-4 border-r border-slate-200 w-44">Data / Hora</th>
+                            <th class="py-3 px-4 w-28 text-center">Ações</th>
+                        </tr>
+                    </thead>
+                    <tbody id="spreadsheet-body" class="divide-y divide-slate-200 text-xs sm:text-sm">
+                        <tr>
+                            <td colspan="6" class="py-8 text-center text-slate-400 text-sm">
+                                Carregando registros da planilha vinculada...
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+    </main>
+
+    <!-- ===================================================================== -->
+    <!-- RODAPÉ                                                                -->
+    <!-- ===================================================================== -->
+    <footer class="bg-white border-t border-slate-200 py-4 px-4 text-center text-xs text-slate-400">
+        Configurador de QR Code Dinâmico &bull; Sincronização em tempo real entre dispositivos e planilha vinculada.
+    </footer>
+
+    <!-- ===================================================================== -->
+    <!-- LÓGICA DA APLICAÇÃO + FIREBASE FIRESTORE EM TEMPO REAL                -->
+    <!-- ===================================================================== -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import {
+            getFirestore,
+            doc,
+            getDoc,
+            setDoc,
+            addDoc,
+            onSnapshot,
+            collection,
+            serverTimestamp
+        } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        // Inicializa ícones Lucide
+        lucide.createIcons();
+
+        // Configuração do ambiente Firebase
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'qr-dinamico-ptbr';
+        const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : null;
+
+        let app = null;
+        let auth = null;
+        let db = null;
+        let currentUser = null;
+
+        // Estado da aplicação
+        const DEFAULT_FALLBACK_URL = 'https://exemplo.com';
+        const DEFAULT_FALLBACK_LABEL = 'Destino Padrão Inicial';
+        let currentRoomId = '';
+        let currentQrData = null;
+        let historyRows = [];
+        let unsubscribeDoc = null;
+        let unsubscribeHistory = null;
+        let qrInstance = null;
+        let adminQrInstance = null;
+        let customPublicBaseUrl = '';
+
+        // Referências de DOM
+        const els = {
+            redirectScreen: document.getElementById('redirect-screen'),
+            redirectTitle: document.getElementById('redirect-title'),
+            redirectSubtitle: document.getElementById('redirect-subtitle'),
+            redirectTargetBox: document.getElementById('redirect-target-box'),
+            redirectUrlDisplay: document.getElementById('redirect-url-display'),
+            redirectActions: document.getElementById('redirect-actions'),
+            redirectNowBtn: document.getElementById('redirect-now-btn'),
+            redirectEditBtn: document.getElementById('redirect-edit-btn'),
+            redirectErrorBox: document.getElementById('redirect-error-box'),
+            redirectBackHome: document.getElementById('redirect-back-home'),
+
+            syncStatusDot: document.getElementById('sync-status-dot'),
+            syncStatusText: document.getElementById('sync-status-text'),
+            headerRoomId: document.getElementById('header-room-id'),
+            mobileRoomId: document.getElementById('mobile-room-id'),
+            cardRoomId: document.getElementById('card-room-id'),
+
+            destinationForm: document.getElementById('destination-form'),
+            destinationInput: document.getElementById('destination-input'),
+            labelInput: document.getElementById('label-input'),
+            pinInput: document.getElementById('pin-input'),
+            pinBadge: document.getElementById('pin-badge'),
+            pasteUrlBtn: document.getElementById('paste-url-btn'),
+            validationError: document.getElementById('validation-error'),
+            validationErrorText: document.getElementById('validation-error-text'),
+            saveDestinationBtn: document.getElementById('save-destination-btn'),
+
+            currentLabelDisplay: document.getElementById('current-label-display'),
+            currentUrlDisplay: document.getElementById('current-url-display'),
+            lastUpdatedBadge: document.getElementById('last-updated-badge'),
+            openCurrentLinkBtn: document.getElementById('open-current-link-btn'),
+            copyCurrentLinkBtn: document.getElementById('copy-current-link-btn'),
+
+            qrcodeContainer: document.getElementById('qrcode-container'),
+            publicHostWarning: document.getElementById('public-host-warning'),
+            customPublicBaseInput: document.getElementById('custom-public-base-input'),
+            applyPublicBaseBtn: document.getElementById('apply-public-base-btn'),
+            dynamicQrUrlText: document.getElementById('dynamic-qr-url-text'),
+            copyQrUrlBtn: document.getElementById('copy-qr-url-btn'),
+            downloadQrBtn: document.getElementById('download-qr-btn'),
+            simulateScanBtn: document.getElementById('simulate-scan-btn'),
+
+            spreadsheetBody: document.getElementById('spreadsheet-body'),
+            exportCsvBtn: document.getElementById('export-csv-btn'),
+            toggleGsheetsGuideBtn: document.getElementById('toggle-gsheets-guide-btn'),
+            gsheetsGuidePanel: document.getElementById('gsheets-guide-panel'),
+            gsheetsScriptCode: document.getElementById('gsheets-script-code'),
+            copyAppsScriptBtn: document.getElementById('copy-apps-script-btn'),
+
+            roomModal: document.getElementById('room-modal'),
+            openRoomModalBtn: document.getElementById('open-room-modal-btn'),
+            closeRoomModal: document.getElementById('close-room-modal'),
+            switchRoomInput: document.getElementById('switch-room-input'),
+            confirmSwitchRoom: document.getElementById('confirm-switch-room'),
+            createNewRoomBtn: document.getElementById('create-new-room-btn'),
+
+            adminQrModal: document.getElementById('admin-qr-modal'),
+            openAdminQrBtn: document.getElementById('open-admin-qr-btn'),
+            mobileCopyAdminBtn: document.getElementById('mobile-copy-admin-btn'),
+            closeAdminQrModal: document.getElementById('close-admin-qr-modal'),
+            adminQrcodeContainer: document.getElementById('admin-qrcode-container'),
+            adminUrlText: document.getElementById('admin-url-text'),
+            copyAdminUrlModal: document.getElementById('copy-admin-url-modal'),
+            modalRoomCode: document.getElementById('modal-room-code')
+        };
+
+        // =====================================================================
+        // UTILITÁRIOS DE INTERFACE E VALIDAÇÃO
+        // =====================================================================
+
+        function showToast(message, type = 'success') {
+            const container = document.getElementById('toast-container');
+            const toast = document.createElement('div');
+            const colors = {
+                success: 'bg-slate-900 text-white border-slate-700',
+                error: 'bg-rose-600 text-white border-rose-500',
+                info: 'bg-indigo-600 text-white border-indigo-500'
+            };
+            toast.className = `pointer-events-auto flex items-center gap-2.5 px-4 py-3 rounded-2xl border shadow-xl text-xs sm:text-sm font-medium transition-all duration-300 ${colors[type] || colors.success}`;
+            toast.innerHTML = `<span>${escapeHtml(message)}</span>`;
+            container.appendChild(toast);
+            setTimeout(() => {
+                toast.style.opacity = '0';
+                toast.style.transform = 'translateY(8px)';
+                setTimeout(() => toast.remove(), 300);
+            }, 3200);
+        }
+
+        function escapeHtml(str) {
+            if (!str) return '';
+            return String(str)
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#039;');
+        }
+
+        function copyToClipboard(text, successMsg = 'Copiado para a área de transferência!') {
+            const textarea = document.createElement('textarea');
+            textarea.value = text;
+            textarea.style.position = 'fixed';
+            textarea.style.opacity = '0';
+            document.body.appendChild(textarea);
+            textarea.select();
+            try {
+                document.execCommand('copy');
+                showToast(successMsg, 'success');
+            } catch (err) {
+                showToast('Não foi possível copiar automaticamente.', 'error');
+            }
+            document.body.removeChild(textarea);
+        }
+
+        function generateRoomCode() {
+            const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+            let code = 'QR-';
+            for (let i = 0; i < 5; i++) {
+                code += chars.charAt(Math.floor(Math.random() * chars.length));
+            }
+            return code;
+        }
+
+        function validateUrl(rawUrl) {
+            const cleaned = (rawUrl || '').trim();
+            if (!cleaned) {
+                return { valid: false, error: 'Por favor, insira um link de destino.' };
+            }
+            if (!/^https?:\/\//i.test(cleaned)) {
+                return { valid: false, error: 'O link deve começar obrigatoriamente com https:// ou http://' };
+            }
+            try {
+                const parsed = new URL(cleaned);
+                if (!parsed.hostname || !parsed.hostname.includes('.')) {
+                    return { valid: false, error: 'Insira um domínio válido (ex: https://seusite.com.br).' };
+                }
+                return { valid: true, url: parsed.toString() };
+            } catch (err) {
+                return { valid: false, error: 'Formato de URL inválido. Verifique o endereço digitado.' };
+            }
+        }
+
+        function formatDateTime(timestampMs) {
+            if (!timestampMs) return 'Agora mesmo';
+            const d = new Date(timestampMs);
+            return d.toLocaleString('pt-BR', {
+                day: '2-digit',
+                month: '2-digit',
+                year: 'numeric',
+                hour: '2-digit',
+                minute: '2-digit',
+                second: '2-digit'
+            });
+        }
+
+        function getBasePageUrl() {
+            if (customPublicBaseUrl) {
+                return customPublicBaseUrl;
+            }
+            const url = new URL(window.location.href);
+            url.search = '';
+            url.hash = '';
+            return url.toString();
+        }
+
+        function isPrivateOrPreviewOrigin() {
+            const href = window.location.href || '';
+            const proto = window.location.protocol || '';
+            const host = window.location.hostname || '';
+            return (
+                proto === 'blob:' ||
+                proto === 'file:' ||
+                proto === 'data:' ||
+                href.startsWith('about:') ||
+                host === 'localhost' ||
+                host === '127.0.0.1' ||
+                host.includes('googleusercontent.com') ||
+                host.includes('webcontainer')
+            );
+        }
+
+        function checkPublicHostWarning() {
+            if (!els.publicHostWarning) return;
+            if (isPrivateOrPreviewOrigin() && !customPublicBaseUrl) {
+                els.publicHostWarning.classList.remove('hidden');
+            } else {
+                els.publicHostWarning.classList.add('hidden');
+            }
+        }
+
+        function buildRedirectUrl(roomId, fallbackUrl = '') {
+            const url = new URL(getBasePageUrl());
+            url.searchParams.set('go', roomId);
+            const safeFallback = (fallbackUrl || (currentQrData && currentQrData.targetUrl) || DEFAULT_FALLBACK_URL).trim();
+            if (/^https?:\/\//i.test(safeFallback)) {
+                // Embute destino de respaldo no hash para leitura offline/entre dispositivos
+                url.hash = 'dest=' + encodeURIComponent(safeFallback);
+            }
+            return url.toString();
+        }
+
+        function buildAdminUrl(roomId) {
+            const url = new URL(getBasePageUrl());
+            url.searchParams.set('id', roomId);
+            return url.toString();
+        }
+
+        function updateBrowserUrlParam(roomId) {
+            try {
+                if (window.location.protocol === 'blob:' || window.location.protocol === 'about:' || window.location.protocol === 'data:') {
+                    return;
+                }
+                const url = new URL(window.location.href);
+                url.searchParams.delete('go');
+                url.searchParams.set('id', roomId);
+                window.history.replaceState({}, '', url.toString());
+            } catch (err) {
+                // Ignora SecurityError em ambientes sandboxed/iframe (ex: blob:)
+            }
+        }
+
+        // Persistência local de fallback (nunca deixa sem dado mesmo sem nuvem)
+        function getLocalRoomState(roomId) {
+            try {
+                const raw = localStorage.getItem(`qr_dinamico_state_${roomId}`);
+                return raw ? JSON.parse(raw) : null;
+            } catch (e) {
+                return null;
+            }
+        }
+
+        function saveLocalRoomState(roomId, state) {
+            try {
+                localStorage.setItem(`qr_dinamico_state_${roomId}`, JSON.stringify(state));
+            } catch (e) {
+                // Ignora erro de quota do navegador
+            }
+        }
+
+        function getLocalHistory(roomId) {
+            try {
+                const raw = localStorage.getItem(`qr_dinamico_history_${roomId}`);
+                const parsed = raw ? JSON.parse(raw) : [];
+                return Array.isArray(parsed) ? parsed : [];
+            } catch (e) {
+                return [];
+            }
+        }
+
+        function saveLocalHistory(roomId, rows) {
+            try {
+                localStorage.setItem(`qr_dinamico_history_${roomId}`, JSON.stringify(rows.slice(0, 50)));
+            } catch (e) {
+                // Ignora erro de quota do navegador
+            }
+        }
+
+        function createDefaultRoomPayload(roomId, customUrl = '') {
+            const validCheck = validateUrl(customUrl);
+            const nowMs = Date.now();
+            return {
+                roomId,
+                targetUrl: validCheck.valid ? validCheck.url : DEFAULT_FALLBACK_URL,
+                label: DEFAULT_FALLBACK_LABEL,
+                pin: '',
+                updatedAtMs: nowMs
+            };
+        }
+
+        // =====================================================================
+        // GERAÇÃO DOS QR CODES (PRINCIPAL E DE ADMINISTRAÇÃO)
+        // =====================================================================
+
+        function renderMainQrCode(roomId, fallbackUrl = '') {
+            const targetRedirectUrl = buildRedirectUrl(roomId, fallbackUrl);
+            els.dynamicQrUrlText.textContent = targetRedirectUrl;
+            els.cardRoomId.textContent = roomId;
+            els.headerRoomId.textContent = roomId;
+            els.mobileRoomId.textContent = roomId;
+
+            els.qrcodeContainer.innerHTML = '';
+            qrInstance = new QRCode(els.qrcodeContainer, {
+                text: targetRedirectUrl,
+                width: 210,
+                height: 210,
+                colorDark: '#0f172a',
+                colorLight: '#ffffff',
+                correctLevel: QRCode.CorrectLevel.M
+            });
+        }
+
+        function renderAdminQrCode(roomId) {
+            const adminUrl = buildAdminUrl(roomId);
+            els.adminUrlText.textContent = adminUrl;
+            els.modalRoomCode.textContent = roomId;
+
+            els.adminQrcodeContainer.innerHTML = '';
+            adminQrInstance = new QRCode(els.adminQrcodeContainer, {
+                text: adminUrl,
+                width: 190,
+                height: 190,
+                colorDark: '#312e81',
+                colorLight: '#f8fafc',
+                correctLevel: QRCode.CorrectLevel.M
+            });
+        }
+
+        // =====================================================================
+        // INICIALIZAÇÃO DO FIREBASE E AUTENTICAÇÃO
+        // =====================================================================
+
+        async function initFirebase() {
+            if (!firebaseConfig) {
+                setSyncStatus('error', 'Configuração de nuvem indisponível');
+                return false;
+            }
+            try {
+                app = initializeApp(firebaseConfig);
+                auth = getAuth(app);
+                db = getFirestore(app);
+
+                if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+                    const cred = await signInWithCustomToken(auth, __initial_auth_token);
+                    currentUser = cred.user;
+                } else {
+                    const cred = await signInAnonymously(auth);
+                    currentUser = cred.user;
+                }
+                return true;
+            } catch (err) {
+                console.error('Erro na autenticação Firebase:', err);
+                setSyncStatus('error', 'Falha na conexão com a nuvem');
+                return false;
+            }
+        }
+
+        function setSyncStatus(state, text) {
+            els.syncStatusText.textContent = text;
+            els.syncStatusDot.className = 'w-2 h-2 rounded-full ' + (
+                state === 'online' ? 'bg-emerald-500' :
+                state === 'syncing' ? 'bg-amber-400 animate-pulse' :
+                'bg-rose-500'
+            );
+        }
+
+        // =====================================================================
+        // MODO REDIRECIONAMENTO (?go=ID)
+        // =====================================================================
+
+        async function handleRedirectMode(goId) {
+            els.redirectScreen.classList.remove('hidden');
+            const cleanId = (goId || 'QR-PADRAO').trim().toUpperCase() || 'QR-PADRAO';
+
+            // Extrai fallback embutido no hash se existir (ex.: #dest=https%3A%2F%2F...)
+            let hashUrl = '';
+            try {
+                const hashStr = window.location.hash || '';
+                const match = hashStr.match(/dest=([^&]+)/);
+                if (match && match[1]) {
+                    const decoded = decodeURIComponent(match[1]);
+                    const check = validateUrl(decoded);
+                    if (check.valid) hashUrl = check.url;
+                }
+            } catch (e) {
+                hashUrl = '';
+            }
+
+            const localState = getLocalRoomState(cleanId);
+            let resolvedData = createDefaultRoomPayload(
+                cleanId,
+                (localState && localState.targetUrl) || hashUrl || DEFAULT_FALLBACK_URL
+            );
+            if (localState && localState.targetUrl) {
+                resolvedData = { ...resolvedData, ...localState };
+            }
+
+            els.redirectEditBtn.onclick = () => {
+                window.location.href = buildAdminUrl(cleanId);
+            };
+            els.redirectBackHome.onclick = () => {
+                window.location.href = buildAdminUrl(cleanId);
+            };
+
+            const ready = await initFirebase();
+            if (ready && currentUser && db) {
+                try {
+                    const qrDocRef = doc(db, 'artifacts', appId, 'public', 'data', 'dynamic_qrs', cleanId);
+                    const snap = await getDoc(qrDocRef);
+
+                    if (snap.exists() && snap.data().targetUrl) {
+                        const cloudData = snap.data();
+                        const check = validateUrl(cloudData.targetUrl);
+                        if (check.valid) {
+                            resolvedData = {
+                                ...resolvedData,
+                                ...cloudData,
+                                targetUrl: check.url
+                            };
+                            saveLocalRoomState(cleanId, resolvedData);
+                        }
+                    } else {
+                        // Inicializa automaticamente no banco se ainda não existir
+                        await setDoc(qrDocRef, {
+                            ...resolvedData,
+                            updatedAt: serverTimestamp(),
+                            updatedBy: currentUser.uid
+                        });
+                        saveLocalRoomState(cleanId, resolvedData);
+                    }
+                } catch (err) {
+                    console.warn('Usando fallback local/hash para redirecionamento:', err);
+                }
+            }
+
+            // Garante sempre um destino válido (nunca exibe "nenhum dado encontrado")
+            const finalCheck = validateUrl(resolvedData.targetUrl);
+            const targetUrl = finalCheck.valid ? finalCheck.url : DEFAULT_FALLBACK_URL;
+
+            els.redirectTitle.textContent = resolvedData.label || 'Destino Configurado';
+            els.redirectSubtitle.textContent = 'Redirecionando para o destino ativo...';
+            els.redirectUrlDisplay.textContent = targetUrl;
+            els.redirectTargetBox.classList.remove('hidden');
+            els.redirectNowBtn.href = targetUrl;
+            els.redirectActions.classList.remove('hidden');
+
+            setTimeout(() => {
+                window.location.replace(targetUrl);
+            }, 850);
+        }
+
+        // =====================================================================
+        // SINCRONIZAÇÃO EM TEMPO REAL DA SALA / QR CODE E PLANILHA VINCULADA
+        // =====================================================================
+
+        async function subscribeToRoom(roomId) {
+            currentRoomId = (roomId || 'QR-PADRAO').trim().toUpperCase() || 'QR-PADRAO';
+            updateBrowserUrlParam(currentRoomId);
+
+            // Carrega estado local/padrão imediatamente para nunca ficar vazio
+            const localState = getLocalRoomState(currentRoomId);
+            currentQrData = localState && localState.targetUrl
+                ? { ...createDefaultRoomPayload(currentRoomId, localState.targetUrl), ...localState }
+                : createDefaultRoomPayload(currentRoomId, DEFAULT_FALLBACK_URL);
+
+            historyRows = getLocalHistory(currentRoomId);
+            renderMainQrCode(currentRoomId, currentQrData.targetUrl);
+            updateCurrentDestinationUI(currentQrData);
+            renderSpreadsheet();
+
+            if (unsubscribeDoc) unsubscribeDoc();
+            if (unsubscribeHistory) unsubscribeHistory();
+
+            if (!currentUser || !db) {
+                setSyncStatus('online', 'Modo local ativo (salvamento garantido)');
+                return;
+            }
+
+            setSyncStatus('syncing', 'Sincronizando dados...');
+
+            const qrDocRef = doc(db, 'artifacts', appId, 'public', 'data', 'dynamic_qrs', currentRoomId);
+
+            // Garante que o documento exista no Firebase com destino padrão inicial
+            try {
+                const initialSnap = await getDoc(qrDocRef);
+                if (!initialSnap.exists()) {
+                    await setDoc(qrDocRef, {
+                        ...currentQrData,
+                        updatedAt: serverTimestamp(),
+                        updatedBy: currentUser.uid
+                    });
+                }
+            } catch (err) {
+                console.warn('Falha ao inicializar documento padrão na nuvem:', err);
+            }
+
+            // 1. Listener do documento principal do QR Code
+            unsubscribeDoc = onSnapshot(
+                qrDocRef,
+                (snapshot) => {
+                    setSyncStatus('online', 'Sincronizado em tempo real');
+                    if (snapshot.exists() && snapshot.data().targetUrl) {
+                        currentQrData = snapshot.data();
+                        saveLocalRoomState(currentRoomId, currentQrData);
+                        renderMainQrCode(currentRoomId, currentQrData.targetUrl);
+                        updateCurrentDestinationUI(currentQrData);
+                    } else {
+                        currentQrData = createDefaultRoomPayload(currentRoomId, DEFAULT_FALLBACK_URL);
+                        saveLocalRoomState(currentRoomId, currentQrData);
+                        renderMainQrCode(currentRoomId, currentQrData.targetUrl);
+                        updateCurrentDestinationUI(currentQrData);
+                    }
+                    renderSpreadsheet();
+                },
+                (error) => {
+                    console.error('Erro no listener do QR Code:', error);
+                    setSyncStatus('online', 'Modo local + nuvem');
+                }
+            );
+
+            // 2. Listener da coleção de histórico (Planilha Vinculada) - Sem orderBy complexo
+            const historyColRef = collection(db, 'artifacts', appId, 'public', 'data', 'dynamic_qr_logs');
+            unsubscribeHistory = onSnapshot(
+                historyColRef,
+                (querySnapshot) => {
+                    const filtered = [];
+                    querySnapshot.forEach((docSnap) => {
+                        const d = docSnap.data();
+                        if (d.roomId === currentRoomId) {
+                            filtered.push({ id: docSnap.id, ...d });
+                        }
+                    });
+                    filtered.sort((a, b) => (b.updatedAtMs || 0) - (a.updatedAtMs || 0));
+                    if (filtered.length > 0) {
+                        historyRows = filtered;
+                        saveLocalHistory(currentRoomId, historyRows);
+                    }
+                    renderSpreadsheet();
+                },
+                (error) => {
+                    console.error('Erro no listener da planilha:', error);
+                }
+            );
+        }
+
+        function updateCurrentDestinationUI(data) {
+            els.currentLabelDisplay.textContent = data.label || 'Destino Principal Configurado';
+            els.currentUrlDisplay.textContent = data.targetUrl || DEFAULT_FALLBACK_URL;
+            els.lastUpdatedBadge.textContent = data.updatedAtMs
+                ? `Atualizado em ${formatDateTime(data.updatedAtMs)}`
+                : 'Ativo';
+
+            if (data.targetUrl) {
+                els.openCurrentLinkBtn.href = data.targetUrl;
+                els.openCurrentLinkBtn.classList.remove('pointer-events-none', 'opacity-50');
+                if (!els.destinationInput.value) {
+                    els.destinationInput.value = data.targetUrl;
+                }
+                if (!els.labelInput.value && data.label) {
+                    els.labelInput.value = data.label;
+                }
+            }
+
+            if (data.pin && data.pin.trim() !== '') {
+                els.pinBadge.classList.remove('hidden');
+            } else {
+                els.pinBadge.classList.add('hidden');
+            }
+
+            els.gsheetsScriptCode.textContent =
+`function doPost(e) {
+  const sheet = SpreadsheetApp.getActiveSpreadsheet().getActiveSheet();
+  const data = JSON.parse(e.postData.contents);
+  sheet.appendRow([new Date(), data.roomId || "${currentRoomId}", data.label || "${(data.label || 'Principal').replace(/"/g, '\\"')}", data.targetUrl || "${data.targetUrl}"]);
+  return ContentService.createTextOutput(JSON.stringify({ ok: true }))
+    .setMimeType(ContentService.MimeType.JSON);
+}`;
+        }
+
+        function resetCurrentDestinationUI() {
+            const fallback = createDefaultRoomPayload(currentRoomId, DEFAULT_FALLBACK_URL);
+            updateCurrentDestinationUI(fallback);
+        }
+
+        // =====================================================================
+        // SALVAR E ATUALIZAR DESTINO NA NUVEM + PLANILHA VINCULADA
+        // =====================================================================
+
+        els.destinationForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            els.validationError.classList.add('hidden');
+
+            const validation = validateUrl(els.destinationInput.value);
+            if (!validation.valid) {
+                els.validationErrorText.textContent = validation.error;
+                els.validationError.classList.remove('hidden');
+                els.destinationInput.focus();
+                return;
+            }
+
+            const enteredPin = (els.pinInput.value || '').trim();
+            if (currentQrData && currentQrData.pin && currentQrData.pin !== enteredPin) {
+                els.validationErrorText.textContent = 'PIN incorreto! Informe o PIN cadastrado para alterar este QR Code.';
+                els.validationError.classList.remove('hidden');
+                els.pinInput.focus();
+                return;
+            }
+
+            const newUrl = validation.url;
+            const newLabel = (els.labelInput.value || '').trim() || 'Destino Principal';
+            const pinToSave = currentQrData && currentQrData.pin ? currentQrData.pin : enteredPin;
+            const nowMs = Date.now();
+
+            const updatedPayload = {
+                roomId: currentRoomId,
+                targetUrl: newUrl,
+                label: newLabel,
+                pin: pinToSave || '',
+                updatedAtMs: nowMs
+            };
+
+            // Atualiza estado local e UI imediatamente
+            currentQrData = updatedPayload;
+            saveLocalRoomState(currentRoomId, updatedPayload);
+            const nextHistory = [{ id: String(nowMs), ...updatedPayload }, ...historyRows];
+            historyRows = nextHistory;
+            saveLocalHistory(currentRoomId, nextHistory);
+            renderMainQrCode(currentRoomId, newUrl);
+            updateCurrentDestinationUI(updatedPayload);
+            renderSpreadsheet();
+
+            els.saveDestinationBtn.disabled = true;
+            els.saveDestinationBtn.innerHTML = `<span>Salvando e sincronizando...</span>`;
+
+            try {
+                if (currentUser && db) {
+                    const qrDocRef = doc(db, 'artifacts', appId, 'public', 'data', 'dynamic_qrs', currentRoomId);
+                    await setDoc(qrDocRef, {
+                        ...updatedPayload,
+                        updatedAt: serverTimestamp(),
+                        updatedBy: currentUser.uid
+                    });
+
+                    const historyColRef = collection(db, 'artifacts', appId, 'public', 'data', 'dynamic_qr_logs');
+                    await addDoc(historyColRef, {
+                        roomId: currentRoomId,
+                        targetUrl: newUrl,
+                        label: newLabel,
+                        updatedAtMs: nowMs,
+                        createdAt: serverTimestamp()
+                    });
+                }
+                showToast('Destino salvo e atualizado! O QR Code já aponta para o novo link.', 'success');
+            } catch (err) {
+                console.error('Erro ao sincronizar na nuvem:', err);
+                showToast('Destino salvo localmente! Sincronização com a nuvem será tentada novamente.', 'info');
+            } finally {
+                els.saveDestinationBtn.disabled = false;
+                els.saveDestinationBtn.innerHTML = `<i data-lucide="save" class="w-4 h-4"></i><span>Salvar e Atualizar Destino</span>`;
+                lucide.createIcons();
+            }
+        });
+
+        // =====================================================================
+        // RENDERIZAÇÃO E EXPORTAÇÃO DA PLANILHA VINCULADA
+        // =====================================================================
+
+        function renderSpreadsheet() {
+            const rows = [];
+
+            // Linha 1: Sempre reflete o estado ativo atual vinculado
+            if (currentQrData && currentQrData.targetUrl) {
+                rows.push({
+                    isCurrent: true,
+                    label: currentQrData.label || 'Destino Principal',
+                    targetUrl: currentQrData.targetUrl,
+                    updatedAtMs: currentQrData.updatedAtMs
+                });
+            }
+
+            // Linhas seguintes: histórico registrado na planilha
+            historyRows.forEach((item, index) => {
+                // Evita duplicar visualmente a linha mais recente idêntica se já estiver no topo
+                if (
+                    index === 0 &&
+                    rows.length > 0 &&
+                    rows[0].targetUrl === item.targetUrl &&
+                    Math.abs((rows[0].updatedAtMs || 0) - (item.updatedAtMs || 0)) < 2000
+                ) {
+                    return;
+                }
+                rows.push({
+                    isCurrent: false,
+                    label: item.label || 'Destino Anterior',
+                    targetUrl: item.targetUrl,
+                    updatedAtMs: item.updatedAtMs
+                });
+            });
+
+            if (rows.length === 0) {
+                els.spreadsheetBody.innerHTML = `
+                    <tr>
+                        <td colspan="6" class="py-8 px-4 text-center text-slate-400 text-xs sm:text-sm">
+                            A planilha vinculada está pronta. Salve um link acima para registrar a primeira linha.
+                        </td>
+                    </tr>
+                `;
+                return;
+            }
+
+            els.spreadsheetBody.innerHTML = rows.map((row, idx) => `
+                <tr class="${row.isCurrent ? 'bg-emerald-50/40 font-medium' : 'hover:bg-slate-50'} transition">
+                    <td class="py-3 px-4 border-r border-slate-200 text-center font-mono text-xs text-slate-400">${idx + 1}</td>
+                    <td class="py-3 px-4 border-r border-slate-200">
+                        ${row.isCurrent
+                            ? '<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-bold bg-emerald-100 text-emerald-800">● Ativo</span>'
+                            : '<span class="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium bg-slate-100 text-slate-600">Histórico</span>'
+                        }
+                    </td>
+                    <td class="py-3 px-4 border-r border-slate-200 text-slate-700 truncate max-w-[180px]">${escapeHtml(row.label)}</td>
+                    <td class="py-3 px-4 border-r border-slate-200">
+                        <a href="${escapeHtml(row.targetUrl)}" target="_blank" rel="noopener noreferrer" class="text-indigo-600 hover:underline break-all font-mono text-xs">
+                            ${escapeHtml(row.targetUrl)}
+                        </a>
+                    </td>
+                    <td class="py-3 px-4 border-r border-slate-200 text-xs text-slate-500 whitespace-nowrap">
+                        ${formatDateTime(row.updatedAtMs)}
+                    </td>
+                    <td class="py-3 px-4 text-center">
+                        <button
+                            type="button"
+                            data-restore-url="${escapeHtml(row.targetUrl)}"
+                            data-restore-label="${escapeHtml(row.label)}"
+                            class="restore-row-btn px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-indigo-100 text-slate-700 hover:text-indigo-700 text-xs font-semibold transition"
+                            title="Carregar este link no campo de edição"
+                        >
+                            Usar
+                        </button>
+                    </td>
+                </tr>
+            `).join('');
+
+            // Eventos para botões "Usar" de cada linha da planilha
+            document.querySelectorAll('.restore-row-btn').forEach((btn) => {
+                btn.addEventListener('click', () => {
+                    els.destinationInput.value = btn.getAttribute('data-restore-url') || '';
+                    els.labelInput.value = btn.getAttribute('data-restore-label') || '';
+                    els.destinationInput.focus();
+                    showToast('Link carregado no formulário. Clique em "Salvar e Atualizar" para ativar.', 'info');
+                });
+            });
+        }
+
+        // Exportar planilha vinculada como CSV
+        els.exportCsvBtn.addEventListener('click', () => {
+            if (!currentQrData && historyRows.length === 0) {
+                showToast('Salve pelo menos um link antes de exportar a planilha.', 'error');
+                return;
+            }
+
+            const csvLines = [
+                ['Codigo_QR', 'Status', 'Campanha', 'Link_Destino', 'Data_Hora_Atualizacao'].join(';')
+            ];
+
+            if (currentQrData && currentQrData.targetUrl) {
+                csvLines.push([
+                    currentRoomId,
+                    'ATIVO',
+                    `"${(currentQrData.label || 'Principal').replace(/"/g, '""')}"`,
+                    `"${currentQrData.targetUrl}"`,
+                    `"${formatDateTime(currentQrData.updatedAtMs)}"`
+                ].join(';'));
+            }
+
+            historyRows.forEach((item) => {
+                csvLines.push([
+                    currentRoomId,
+                    'HISTORICO',
+                    `"${(item.label || '').replace(/"/g, '""')}"`,
+                    `"${item.targetUrl}"`,
+                    `"${formatDateTime(item.updatedAtMs)}"`
+                ].join(';'));
+            });
+
+            const blob = new Blob(['\uFEFF' + csvLines.join('\n')], { type: 'text/csv;charset=utf-8;' });
+            const downloadUrl = URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = downloadUrl;
+            link.download = `planilha-qr-dinamico-${currentRoomId}.csv`;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            URL.revokeObjectURL(downloadUrl);
+            showToast('Planilha CSV baixada com sucesso!', 'success');
+        });
+
+        // =====================================================================
+        // EVENTOS DE BOTÕES E MODAIS
+        // =====================================================================
+
+        // Colar da área de transferência
+        els.pasteUrlBtn.addEventListener('click', async () => {
+            try {
+                if (navigator.clipboard && navigator.clipboard.readText) {
+                    const text = await navigator.clipboard.readText();
+                    if (text) {
+                        els.destinationInput.value = text.trim();
+                        els.validationError.classList.add('hidden');
+                        showToast('Link colado!', 'info');
+                        return;
+                    }
+                }
+            } catch (err) {
+                // Fallback silencioso caso o navegador bloqueie leitura automática
+            }
+            els.destinationInput.focus();
+            showToast('Use Ctrl+V ou toque e segure no campo para colar.', 'info');
+        });
+
+        // Copiar destino atual
+        els.copyCurrentLinkBtn.addEventListener('click', () => {
+            if (!currentQrData || !currentQrData.targetUrl) {
+                showToast('Nenhum link configurado para copiar.', 'error');
+                return;
+            }
+            copyToClipboard(currentQrData.targetUrl, 'Link de destino copiado!');
+        });
+
+        // Copiar URL fixa embutida no QR Code
+        els.copyQrUrlBtn.addEventListener('click', () => {
+            copyToClipboard(buildRedirectUrl(currentRoomId), 'Link fixo do QR Code copiado!');
+        });
+
+        // Aplicar URL pública personalizada para funcionar em outro celular
+        if (els.applyPublicBaseBtn) {
+            els.applyPublicBaseBtn.addEventListener('click', () => {
+                const check = validateUrl(els.customPublicBaseInput.value);
+                if (!check.valid) {
+                    showToast('Insira uma URL pública válida começando com https://', 'error');
+                    return;
+                }
+                const cleanBase = new URL(check.url);
+                cleanBase.search = '';
+                cleanBase.hash = '';
+                customPublicBaseUrl = cleanBase.toString();
+                try {
+                    localStorage.setItem('qr_dinamico_public_base', customPublicBaseUrl);
+                } catch (e) {}
+                checkPublicHostWarning();
+                renderMainQrCode(currentRoomId, currentQrData ? currentQrData.targetUrl : DEFAULT_FALLBACK_URL);
+                showToast('Domínio público aplicado! Agora outro celular pode ler o QR Code.', 'success');
+            });
+        }
+
+        // Baixar imagem PNG do QR Code
+        els.downloadQrBtn.addEventListener('click', () => {
+            const canvas = els.qrcodeContainer.querySelector('canvas');
+            const img = els.qrcodeContainer.querySelector('img');
+            let dataUrl = '';
+
+            if (canvas) {
+                dataUrl = canvas.toDataURL('image/png');
+            } else if (img && img.src) {
+                dataUrl = img.src;
+            }
+
+            if (!dataUrl) {
+                showToast('QR Code ainda não gerado.', 'error');
+                return;
+            }
+
+            const a = document.createElement('a');
+            a.href = dataUrl;
+            a.download = `qrcode-dinamico-${currentRoomId}.png`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            showToast('Imagem PNG do QR Code baixada!', 'success');
+        });
+
+        // Simular leitura do QR Code em nova aba
+        els.simulateScanBtn.addEventListener('click', () => {
+            const redirectUrl = buildRedirectUrl(currentRoomId);
+            window.open(redirectUrl, '_blank', 'noopener,noreferrer');
+        });
+
+        // Modal: Outro Celular (QR Code de Administração)
+        function openAdminModal() {
+            renderAdminQrCode(currentRoomId);
+            els.adminQrModal.classList.remove('hidden');
+        }
+        els.openAdminQrBtn.addEventListener('click', openAdminModal);
+        els.mobileCopyAdminBtn.addEventListener('click', openAdminModal);
+        els.closeAdminQrModal.addEventListener('click', () => els.adminQrModal.classList.add('hidden'));
+        els.copyAdminUrlModal.addEventListener('click', () => {
+            copyToClipboard(buildAdminUrl(currentRoomId), 'Link de acesso remoto copiado!');
+        });
+
+        // Modal: Trocar / Criar Código de QR Code
+        els.openRoomModalBtn.addEventListener('click', () => {
+            els.switchRoomInput.value = '';
+            els.roomModal.classList.remove('hidden');
+            els.switchRoomInput.focus();
+        });
+        els.closeRoomModal.addEventListener('click', () => els.roomModal.classList.add('hidden'));
+
+        els.confirmSwitchRoom.addEventListener('click', () => {
+            const val = (els.switchRoomInput.value || '').trim().toUpperCase();
+            if (!val || val.length < 3) {
+                showToast('Digite um código válido (ex: QR-ABC12).', 'error');
+                return;
+            }
+            els.roomModal.classList.add('hidden');
+            subscribeToRoom(val);
+            showToast(`Conectado ao código ${val}`, 'success');
+        });
+
+        els.createNewRoomBtn.addEventListener('click', () => {
+            const freshCode = generateRoomCode();
+            els.roomModal.classList.add('hidden');
+            subscribeToRoom(freshCode);
+            showToast(`Novo QR Code dinâmico criado: ${freshCode}`, 'success');
+        });
+
+        // Toggle Guia Google Sheets
+        els.toggleGsheetsGuideBtn.addEventListener('click', () => {
+            els.gsheetsGuidePanel.classList.toggle('hidden');
+        });
+        els.copyAppsScriptBtn.addEventListener('click', () => {
+            copyToClipboard(els.gsheetsScriptCode.textContent, 'Dados CSV copiados para colar no Google Sheets!');
+        });
+
+        // Fechar modais ao clicar no fundo escuro
+        [els.roomModal, els.adminQrModal].forEach((modal) => {
+            modal.addEventListener('click', (e) => {
+                if (e.target === modal) modal.classList.add('hidden');
+            });
+        });
+
+        // =====================================================================
+        // BOOTSTRAP DA APLICAÇÃO
+        // =====================================================================
+
+        window.addEventListener('DOMContentLoaded', async () => {
+            try {
+                const savedBase = localStorage.getItem('qr_dinamico_public_base');
+                if (savedBase) {
+                    customPublicBaseUrl = savedBase;
+                    if (els.customPublicBaseInput) els.customPublicBaseInput.value = savedBase;
+                }
+            } catch (e) {}
+
+            checkPublicHostWarning();
+
+            const params = new URLSearchParams(window.location.search);
+            const goParam = params.get('go');
+            const idParam = params.get('id');
+
+            // Se a URL contiver ?go=ID, ativa imediatamente a tela de redirecionamento dinâmico
+            if (goParam) {
+                await handleRedirectMode(goParam);
+                return;
+            }
+
+            // Caso contrário, abre o painel configurador
+            const initialRoomId = idParam ? idParam.trim().toUpperCase() : generateRoomCode();
+            renderMainQrCode(initialRoomId, DEFAULT_FALLBACK_URL);
+
+            const firebaseReady = await initFirebase();
+            await subscribeToRoom(initialRoomId);
+            if (!firebaseReady) {
+                setSyncStatus('online', 'Modo local ativo');
+            }
+        });
+    </script>
+</body>
+</html>
